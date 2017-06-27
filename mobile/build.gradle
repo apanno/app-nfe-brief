@@ -1,0 +1,155 @@
+// Main build script for WebView App
+// 
+// Usage: gradlew assembleDebug           Build debug APK
+//        gradlew assembleRelease         Build release APK
+
+
+final VERSION_MAJOR = 2 // max two digits
+final VERSION_MINOR = 2 // max two digits
+final VERSION_PATCH = 0 // max two digits
+final VERSION_BUILD = 0 // max three digits
+
+
+apply plugin: "com.android.application"
+
+
+dependencies
+{
+	compile "com.android.support:support-compat:25.1.1"
+	compile "com.android.support:support-core-utils:25.1.1"
+	compile "com.android.support:support-core-ui:25.1.1"
+	compile "com.android.support:support-fragment:25.1.1"
+	compile "com.android.support:appcompat-v7:25.1.1"
+	compile "com.android.support:design:25.1.1"
+	compile "com.google.android.gms:play-services-base:10.0.1"
+	compile "com.google.android.gms:play-services-analytics:10.0.1"
+	compile "com.google.android.gms:play-services-ads:10.0.1"
+	compile "com.google.android.gms:play-services-gcm:10.0.1"
+	compile "com.google.android.gms:play-services-location:10.0.1"
+	compile "com.onesignal:OneSignal:3.4.3@aar"
+	compile (name:"config", ext:"aar")
+	compile fileTree(dir: "libs", include: ["*.jar"])
+}
+
+
+android
+{
+	compileSdkVersion 25
+	buildToolsVersion "25.0.2"
+
+	defaultConfig
+	{
+		applicationId "com.nfebrief.aleetino"
+		minSdkVersion 15
+		targetSdkVersion 25
+		versionCode VERSION_MAJOR*10000000 + VERSION_MINOR*100000 + VERSION_PATCH*1000 + VERSION_BUILD
+		versionName "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}"
+
+		// app id and Google project number for OneSignal push notifications,
+		// leave these constants empty if you do not want to use push notifications,
+		// see https://documentation.onesignal.com for more info
+		manifestPlaceholders = [onesignal_app_id: "1a5982b6-2575-4e5c-ae4b-09ceb294e884",
+								onesignal_google_project_number: "426693800124"]
+	}
+
+	signingConfigs
+	{
+		release
+		{
+			// passwords and alias are obtained via askForPasswords task
+			storeFile file("../${project.property('keystore.file')}")
+			storePassword ""
+			keyAlias ""
+			keyPassword ""
+		}
+	}
+
+	buildTypes
+	{
+		debug
+		{
+			buildConfigField "boolean", "LOGS", "true"
+
+			versionNameSuffix "-debug"
+		}
+
+		release
+		{
+			buildConfigField "boolean", "LOGS", "false"
+
+			signingConfig signingConfigs.release
+			zipAlignEnabled true
+			minifyEnabled false
+			shrinkResources false
+			proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+		}
+	}
+
+	compileOptions
+	{
+		sourceCompatibility JavaVersion.VERSION_1_7
+		targetCompatibility JavaVersion.VERSION_1_7
+	}
+
+	applicationVariants.all
+	{
+		variant ->
+			if(variant.buildType.name.equals("release"))
+			{
+				renameArtifact(variant)
+			}
+	}
+}
+
+
+def renameArtifact(variant)
+{
+	variant.outputs.each
+	{
+		output ->
+			def date = new Date().format("yyyyMMdd")
+			def fileName = "aleetino-${project.name}-${variant.versionName}-${variant.versionCode}-${date}-${variant.name}.apk"
+			output.outputFile = new File((String) output.outputFile.parent, fileName)
+	}
+}
+
+
+task askForPasswords <<
+{
+	def storePass
+	def keyAlias
+	def keyPass
+
+	def keystorePropertiesFile = new File((String) project.property("keystore.properties"))
+
+	if(project.hasProperty("keystore.properties") && keystorePropertiesFile.exists())
+	{
+		println "Loading keystore passwords from property file..."
+		Properties properties = new Properties()
+		properties.load(new FileInputStream(keystorePropertiesFile))
+		storePass = properties["keystore.store.password"]
+		keyAlias = properties["keystore.key.alias"]
+		keyPass = properties["keystore.key.password"]
+	}
+	else
+	{
+		println "Getting keystore passwords from user input..."
+		storePass = new String(System.console().readPassword("\nStore password: "))
+		keyAlias = new String(System.console().readLine("Key alias: "))
+		keyPass = new String(System.console().readPassword("Key password: "))
+	}
+
+	android.signingConfigs.release.storePassword = storePass
+	android.signingConfigs.release.keyAlias = keyAlias
+	android.signingConfigs.release.keyPassword = keyPass
+}
+
+
+tasks.whenTaskAdded
+{
+	theTask ->
+	if(theTask.name.equals("packageRelease"))
+	{
+		theTask.dependsOn "askForPasswords"
+	}
+}
